@@ -1,785 +1,948 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
-  <meta name="theme-color" content="#121212">
-  <meta name="color-scheme" content="light only">
-  <title>Wayback Imagery Map</title>
-  <script src="https://js.arcgis.com/4.29/"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-  <style>
-    :root {
-      --primary-dark: #1a1a1a;
-      --primary-light: #ffffff;
-      --accent-blue: #007AFF;
-      --accent-cyan: #00C7BE;
-      --glass-bg: rgba(255, 255, 255, 0.1);
-      --glass-border: rgba(255, 255, 255, 0.2);
-      --shadow-dark: rgba(0, 0, 0, 0.2);
-      --shadow-light: rgba(255, 255, 255, 0.1);
-    }
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    }
-    html, body {
-      height: 100%;
-      width: 100%;
-      overflow: hidden;
-      touch-action: none;
-      background: linear-gradient(135deg, var(--primary-dark), #2c2c2c);
-      color: var(--primary-light);
-      -webkit-user-select: none;
-      user-select: none;
-    }
-    #mapDiv {
-      width: 100%;
-      height: 100%;
-      position: absolute;
-      top: 0;
-      left: 0;
-      z-index: 0;
-      touch-action: pan-x pan-y pinch-zoom;
-    }
-    .background-animation {
-      position: fixed;
-      width: 100vw;
-      height: 100vh;
-      background: 
-        radial-gradient(circle at 20% 35%, var(--accent-blue) 0%, transparent 50%),
-        radial-gradient(circle at 75% 44%, var(--accent-cyan) 0%, transparent 50%);
-      filter: blur(90px);
-      opacity: 0.15;
-      animation: backgroundFlow 15s ease infinite alternate;
-      z-index: -1;
-    }
-    @keyframes backgroundFlow {
-      0% { transform: scale(1) rotate(0deg); }
-      100% { transform: scale(1.2) rotate(360deg); }
-    }
-    .esri-layer-tile {
-      transition: opacity 0.4s ease, filter 0.4s ease;
-    }
-    .esri-layer-tile.loading {
-      opacity: 0;
-      filter: blur(8px);
-    }
-    .esri-layer-tile.loaded {
-      opacity: 1;
-      filter: blur(0);
-    }
-    .esri-view {
-      transition: opacity 0.4s ease, filter 0.4s ease;
-    }
-    .esri-view.switching {
-      opacity: 0.5;
-      filter: blur(5px);
-    }
-    .custom-controls {
-      position: absolute;
-      top: 20px;
-      right: 20px;
-      z-index: 1000;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      pointer-events: auto;
-    }
-    .control-button {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 50px;
-      height: 50px;
-      background: var(--glass-bg);
-      backdrop-filter: blur(20px);
-      border: 1px solid var(--glass-border);
-      border-radius: 50%;
-      color: var(--primary-light);
-      font-size: 18px;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      box-shadow: 0 4px 15px var(--shadow-dark);
-      pointer-events: auto;
-      touch-action: manipulation;
-    }
-    .control-button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 20px var(--shadow-dark);
-      background: rgba(255, 255, 255, 0.15);
-    }
-    .control-button:active {
-      transform: translateY(0);
-      box-shadow: 0 2px 10px var(--shadow-dark);
-    }
-    .coords-container {
-      position: absolute;
-      top: 180px;
-      right: 20px;
-      display: none;
-      flex-direction: column;
-      align-items: flex-end;
-      z-index: 1000;
-      transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-      transform-origin: right top;
-      filter: blur(0);
-      opacity: 0;
-      pointer-events: auto;
-    }
-    .coords-container.show {
-      display: flex;
-      opacity: 1;
-      filter: blur(0);
-      animation: coordsContainerFadeIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    }
-    @keyframes coordsContainerFadeIn {
-      from { 
-        opacity: 0; 
-        transform: scale(0.9) translateY(-20px); 
-        filter: blur(10px); 
-      }
-      to { 
-        opacity: 1; 
-        transform: scale(1) translateY(0); 
-        filter: blur(0); 
-      }
-    }
-    .coords-container.hide {
-      animation: coordsContainerFadeOut 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    }
-    @keyframes coordsContainerFadeOut {
-      from { 
-        opacity: 1; 
-        transform: scale(1) translateY(0); 
-        filter: blur(0); 
-      }
-      to { 
-        opacity: 0; 
-        transform: scale(0.9) translateY(-20px); 
-        filter: blur(10px); 
-      }
-    }
-    .coords-form {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      background: var(--glass-bg);
-      backdrop-filter: blur(20px);
-      border: 1px solid var(--glass-border);
-      padding: 15px;
-      border-radius: 15px;
-      box-shadow: 0 10px 25px var(--shadow-dark);
-    }
-    .coords-input {
-      width: 220px;
-      padding: 10px 15px;
-      font-size: 14px;
-      color: var(--primary-light);
-      background: rgba(255, 255, 255, 0.1);
-      border: 1px solid var(--glass-border);
-      border-radius: 25px;
-      outline: none;
-      transition: all 0.3s ease;
-    }
-    .coords-input::placeholder {
-      color: rgba(255, 255, 255, 0.6);
-    }
-    .coords-input:focus {
-      background: rgba(255, 255, 255, 0.15);
-      border-color: var(--accent-blue);
-      box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.2);
-      width: 240px;
-    }
-    .coords-submit {
-      background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
-      color: var(--primary-light);
-      border: none;
-      padding: 10px;
-      border-radius: 25px;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.3s ease;
-    }
-    .coords-submit:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 20px var(--shadow-dark);
-    }
-    .coords-submit:active {
-      transform: translateY(0);
-      box-shadow: 0 2px 10px var(--shadow-dark);
-    }
-    .coordinates-display {
-      position: absolute;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: var(--glass-bg);
-      backdrop-filter: blur(20px);
-      padding: 10px 20px;
-      border-radius: 20px;
-      border: 1px solid var(--glass-border);
-      font-size: 14px;
-      color: var(--primary-light);
-      box-shadow: 0 4px 15px var(--shadow-dark);
-      z-index: 1000;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      pointer-events: auto;
-    }
-    .coordinates-display:hover {
-      background: rgba(255, 255, 255, 0.15);
-      transform: translateX(-50%) translateY(-2px);
-    }
-    .coordinates-display:active {
-      transform: translateX(-50%) translateY(0);
-    }
-    .date-selector {
-      position: absolute;
-      bottom: 20px;
-      left: 20px;
-      z-index: 1000;
-      background: var(--glass-bg);
-      backdrop-filter: blur(20px);
-      padding: 15px;
-      border-radius: 15px;
-      border: 1px solid var(--glass-border);
-      box-shadow: 0 4px 15px var(--shadow-dark);
-      max-width: 80%;
-      pointer-events: auto;
-    }
-    #dateSelect {
-      width: 100%;
-      padding: 12px 40px 12px 15px;
-      font-size: 16px;
-      border: 1px solid transparent;
-      border-radius: 10px;
-      background: rgba(255, 255, 255, 0.1);
-      color: var(--primary-light);
-      -webkit-appearance: none;
-      appearance: none;
-      margin-bottom: 10px;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      position: relative;
-      box-shadow: 0 2px 10px var(--shadow-dark);
-    }
-    #dateSelect:focus {
-      outline: none;
-      border-color: var(--accent-blue);
-      box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.2);
-      background: rgba(255, 255, 255, 0.15);
-    }
-    #dateSelect:hover {
-      background: rgba(255, 255, 255, 0.15);
-      transform: translateY(-1px);
-    }
-    .date-selector::after {
-      content: '\f078';
-      font-family: 'Font Awesome 6 Free';
-      font-weight: 900;
-      color: var(--primary-light);
-      position: absolute;
-      top: 27px;
-      right: 30px;
-      pointer-events: none;
-      transition: all 0.3s ease;
-    }
-    #dateSelect:focus + .date-selector::after {
-      color: var(--accent-blue);
-    }
-    #dateNav {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-    }
-    #dateNav button {
-      padding: 10px 20px;
-      font-size: 16px;
-      background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
-      color: var(--primary-light);
-      border: none;
-      border-radius: 10px;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      touch-action: manipulation;
-    }
-    #dateNav button:disabled {
-      background: rgba(255, 255, 255, 0.15);
-      cursor: not-allowed;
-    }
-    #dateNav button:hover:not(:disabled) {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 20px var(--shadow-dark);
-    }
-    #dateNav button:active:not(:disabled) {
-      transform: translateY(0);
-      box-shadow: 0 2px 10px var(--shadow-dark);
-    }
-    .scale-line {
-      position: absolute;
-      bottom: 20px;
-      right: 20px;
-      background: var(--glass-bg);
-      backdrop-filter: blur(20px);
-      padding: 10px;
-      border-radius: 10px;
-      border: 1px solid var(--glass-border);
-      font-size: 12px;
-      color: var(--primary-light);
-      box-shadow: 0 4px 15px var(--shadow-dark);
-      z-index: 1000;
-      pointer-events: auto;
-    }
-    .loading-screen {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      background: linear-gradient(135deg, #0a0a0a, #1a1a1a);
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      z-index: 10000;
-      transition: opacity 0.8s ease, filter 0.8s ease;
-    }
-    .loading-screen.fade-out {
-      opacity: 0;
-      filter: blur(20px);
-      pointer-events: none;
-    }
-    .loading-content {
-      text-align: center;
-      color: var(--primary-light);
-      animation: pulseGlow 2s ease-in-out infinite alternate;
-    }
-    .loading-title {
-      font-size: 36px;
-      font-weight: 700;
-      background: linear-gradient(135deg, var(--primary-light), var(--accent-blue));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      margin-bottom: 15px;
-      text-shadow: 0 0 10px rgba(0, 122, 255, 0.5);
-    }
-    .loading-progress {
-      font-size: 24px;
-      font-weight: 600;
-      background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-    .loading-info {
-      position: absolute;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 15px;
-      max-width: 80%;
-      text-align: center;
-    }
-    .loading-info-text {
-      font-size: 14px;
-      color: var(--primary-light);
-      opacity: 0.8;
-    }
-    .loading-info-button {
-      padding: 10px 20px;
-      font-size: 14px;
-      background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
-      color: var(--primary-light);
-      border: none;
-      border-radius: 25px;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      text-decoration: none;
-    }
-    .loading-info-button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 20px var(--shadow-dark);
-    }
-    .loading-info-button:active {
-      transform: translateY(0);
-      box-shadow: 0 2px 10px var(--shadow-dark);
-    }
-    @keyframes pulseGlow {
-      0% { transform: scale(1); opacity: 0.9; }
-      100% { transform: scale(1.02); opacity: 1; }
-    }
-    @media (max-width: 768px) {
-      .custom-controls {
-        top: 10px;
-        right: 10px;
-      }
-      .coords-container {
-        top: 160px;
-        right: 10px;
-      }
-      .coords-input {
-        width: 180px;
-      }
-      .coords-input:focus {
-        width: 200px;
-      }
-      .date-selector {
-        bottom: 10px;
-        left: 10px;
-        padding: 10px;
-        max-width: 90%;
-      }
-      .scale-line {
-        bottom: 10px;
-        right: 10px;
-      }
-      .coordinates-display {
-        font-size: 12px;
-        padding: 8px 15px;
-      }
-      .loading-title {
-        font-size: 28px;
-      }
-      .loading-progress {
-        font-size: 20px;
-      }
-      .loading-info-text {
-        font-size: 12px;
-      }
-      .loading-info-button {
-        font-size: 12px;
-        padding: 8px 15px;
-      }
-    }
-    .custom-controls, .coordinates-display, .date-selector, .scale-line {
-      touch-action: none;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Карта заброшенных объектов Киева и Броваров</title>
+    <style>
+        :root {
+            --primary-dark: #1a1a1a;
+            --primary-light: #ffffff;
+            --accent-blue: #007AFF;
+            --accent-cyan: #00C7BE;
+            --glass-bg: rgba(255, 255, 255, 0.15);
+            --glass-border: rgba(255, 255, 255, 0.3);
+            --shadow-dark: rgba(0, 0, 0, 0.2);
+        }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        html, body {
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
+            background: linear-gradient(135deg, var(--primary-dark), #2c2c2c);
+            color: var(--primary-light);
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        #map {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 0;
+            transition: filter 0.5s ease;
+        }
+        .map-blurred {
+            filter: blur(5px);
+        }
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            opacity: 0;
+            backdrop-filter: blur(10px);
+            transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: block;
+            pointer-events: none;
+        }
+        .overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .enlarged-image-container {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -100vh);
+            max-width: 90vw;
+            max-height: 90vh;
+            z-index: 1001;
+            opacity: 0;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .enlarged-image-container.active {
+            transform: translate(-50%, -50%);
+            opacity: 1;
+        }
+        .enlarged-image {
+            max-width: 90vw;
+            max-height: 90vh;
+            object-fit: contain;
+            border-radius: 12px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+        }
+        .background-animation {
+            position: fixed;
+            width: 100vw;
+            height: 100vh;
+            background:
+                radial-gradient(circle at 20% 35%, var(--accent-blue) 0%, transparent 50%),
+                radial-gradient(circle at 75% 44%, var(--accent-cyan) 0%, transparent 50%);
+            filter: blur(90px);
+            opacity: 0.15;
+            animation: backgroundFlow 15s ease infinite alternate;
+            z-index: -1;
+        }
+        @keyframes backgroundFlow {
+            0% { transform: scale(1) rotate(0deg); }
+            100% { transform: scale(1.2) rotate(360deg); }
+        }
+        .coordinates-display {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--glass-bg);
+            backdrop-filter: blur(25px);
+            padding: 10px 20px;
+            border-radius: 20px;
+            border: 1px solid var(--glass-border);
+            font-size: 14px;
+            color: var(--primary-light);
+            box-shadow: 0 4px 15px var(--shadow-dark);
+            z-index: 1001;
+        }
+        .scale-line {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(25px);
+            padding: 10px;
+            border-radius: 10px;
+            border: 1px solid var(--glass-border);
+            font-size: 12px;
+            color: var(--primary-light);
+            box-shadow: 0 4px 15px var(--shadow-dark);
+            z-index: 1001;
+        }
+        .loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(135deg, #0a0a0a, #1a1a1a);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+            transition: opacity 0.8s ease;
+        }
+        .loading-screen.fade-out {
+            opacity: 0;
+            pointer-events: none;
+        }
+        .loading-content {
+            text-align: center;
+            color: var(--primary-light);
+        }
+        .loading-title {
+            font-size: 36px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary-light), var(--accent-blue));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 15px;
+        }
+        .loading-progress {
+            font-size: 24px;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        @media (max-width: 768px) {
+            .scale-line {
+                bottom: 10px;
+                right: 10px;
+            }
+            .coordinates-display {
+                font-size: 12px;
+                padding: 8px 15px;
+            }
+            .loading-title {
+                font-size: 28px;
+            }
+            .loading-progress {
+                font-size: 20px;
+            }
+        }
+        .custom-infobox {
+            background: var(--glass-bg);
+            backdrop-filter: blur(25px);
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid var(--glass-border);
+            max-width: 300px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-size: 14px;
+            color: var(--primary-light);
+            box-shadow: 0 8px 20px var(--shadow-dark);
+            opacity: 0;
+            transform: scale(0.5) translateY(50px);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            transform-origin: center bottom;
+            pointer-events: auto;
+        }
+        .custom-infobox.visible {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+        }
+        .custom-infobox h3 {
+            margin: 0 0 10px 0;
+            color: var(--accent-blue);
+            font-size: 16px;
+            font-weight: 600;
+            word-wrap: break-word;
+        }
+        .custom-infobox p {
+            margin: 0 0 10px 0;
+            line-height: 1.5;
+            font-size: 13px;
+        }
+        .custom-infobox a {
+            color: var(--accent-cyan);
+            text-decoration: none;
+            word-break: break-all;
+            font-size: 13px;
+        }
+        .custom-infobox a:hover {
+            color: var(--accent-blue);
+            text-decoration: underline;
+        }
+        .custom-infobox .google-maps-link {
+            display: inline-block;
+            margin: 10px 0;
+            padding: 8px 12px;
+            background: linear-gradient(135deg, rgba(66, 133, 244, 0.1), rgba(0, 255, 127, 0.1));
+            border: 1px solid rgba(66, 133, 244, 0.3);
+            border-radius: 8px;
+            color: var(--accent-cyan);
+            text-decoration: none;
+            font-size: 13px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .custom-infobox .google-maps-link:hover {
+            background: linear-gradient(135deg, rgba(66, 133, 244, 0.2), rgba(0, 255, 127, 0.2));
+            color: var(--accent-blue);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+        }
+        .custom-infobox .google-maps-link::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(
+                90deg,
+                transparent,
+                rgba(255, 255, 255, 0.2),
+                transparent
+            );
+            transition: 0.5s;
+        }
+        .custom-infobox .google-maps-link:hover::before {
+            left: 100%;
+        }
+        .custom-infobox img {
+            width: 100%;
+            height: 150px;
+            min-height: 150px;
+            object-fit: cover;
+            border-radius: 8px;
+            margin: 10px 0;
+            box-shadow: 0 4px 10px var(--shadow-dark);
+            display: block;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+        .custom-infobox img:hover {
+            transform: scale(1.05);
+        }
+        .custom-infobox img.error {
+            background: #333;
+            color: var(--primary-light);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            text-align: center;
+            padding: 5px;
+            box-sizing: border-box;
+        }
+        .custom-infobox .copy-button {
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+            color: var(--primary-light);
+            border: none;
+            padding: 8px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            text-align: center;
+            margin-top: 10px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+        .custom-infobox .copy-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px var(--shadow-dark);
+        }
+        .custom-infobox .copy-button:active {
+            transform: scale(0.95);
+        }
+        .custom-infobox .copy-button::after {
+            content: 'Скопировано!';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .custom-infobox .copy-button.copied::after {
+            opacity: 1;
+        }
+        .city-selector {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 1001;
+        }
+        .city-button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px 20px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(25px);
+            border: 1px solid var(--glass-border);
+            border-radius: 25px;
+            color: var(--primary-light);
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 10px var(--shadow-dark);
+        }
+        .city-button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+        .city-button.active {
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+        }
+        .city-menu {
+            position: absolute;
+            top: 50px;
+            right: 0;
+            background: var(--glass-bg);
+            backdrop-filter: blur(25px);
+            border: 1px solid var(--glass-border);
+            border-radius: 15px;
+            box-shadow: 0 8px 20px var(--shadow-dark);
+            padding: 10px;
+            min-width: 120px;
+            opacity: 0;
+            transform: scale(0.8);
+            transform-origin: top right;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            visibility: hidden;
+            z-index: 1002;
+        }
+        .city-menu.visible {
+            opacity: 1;
+            transform: scale(1);
+            visibility: visible;
+        }
+        .city-menu-item {
+            padding: 8px 12px;
+            color: var(--primary-light);
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 10px;
+            transition: background 0.2s ease;
+        }
+        .city-menu-item:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        .city-menu-item.active {
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+        }
+    </style>
+    <script src="https://www.bing.com/api/maps/mapcontrol?key=AvhUDUTzEOoxzCkPfDB0GEm3oZyDPpe0qn_Asbubfhe2tXLnTJ2OBWM0nc8uIO-K&callback=initMap" async defer></script>
 </head>
 <body>
-  <div id="loading-screen" class="loading-screen">
-    <div class="loading-content">
-      <div class="loading-title">Wayback Imagery Map</div>
-      <p class="loading-progress">Загрузка...</p>
+    <div class="background-animation"></div>
+    <div class="loading-screen" id="loadingScreen">
+        <div class="loading-content">
+            <div class="loading-title">Загрузка карты</div>
+            <div class="loading-progress" id="progress">Пожалуйста, подождите...</div>
+        </div>
     </div>
-    <div class="loading-info">
-      <p class="loading-info-text">Этот сайт предоставляет доступ к историческим спутниковым снимкам через глубокий анализ данных ArcGIS.</p>
-      <a href="https://t.me/MAMOHT_TEPPOP_2" class="loading-info-button" target="_blank">Наш канал</a>
+    <div class="overlay" id="overlay"></div>
+    <div class="enlarged-image-container" id="enlargedImageContainer">
+        <img class="enlarged-image" id="enlargedImage" src="" alt="Увеличенное изображение">
     </div>
-  </div>
-  <div class="background-animation"></div>
-  <div id="mapDiv"></div>
-  <div class="custom-controls">
-    <button class="control-button" id="zoomIn" title="Приблизить">
-      <i class="fas fa-plus"></i>
-    </button>
-    <button class="control-button" id="zoomOut" title="Отдалить">
-      <i class="fas fa-minus"></i>
-    </button>
-    <button class="control-button" id="coordsBtn" title="Ввести координаты">
-      <i class="fas fa-map-pin"></i>
-    </button>
-    <div class="coords-container">
-      <form class="coords-form">
-        <input type="text" class="coords-input" id="coordsInput" placeholder="Координаты (например, 50.5564,30.4495)" />
-        <button type="submit" class="coords-submit">Перейти</button>
-      </form>
+    <div class="coordinates-display" id="coordinatesDisplay">Ш: 50.450100, Д: 30.523400</div>
+    <div class="city-selector">
+        <button class="city-button" id="cityButton">Киев</button>
+        <div class="city-menu" id="cityMenu">
+            <div class="city-menu-item active" data-city="kyiv">Киев</div>
+            <div class="city-menu-item" data-city="brovary">Бровары</div>
+        </div>
     </div>
-  </div>
-  <div class="coordinates-display" id="coordinatesDisplay" title="Кликните, чтобы скопировать координаты"></div>
-  <div class="date-selector">
-    <select id="dateSelect"></select>
-    <div id="dateNav">
-      <button id="prevDate">Предыдущая</button>
-      <button id="nextDate">Следующая</button>
-    </div>
-  </div>
-  <div class="scale-line" id="scaleLine"></div>
-  <script>
-    require([
-      "esri/Map",
-      "esri/views/MapView",
-      "esri/layers/WebTileLayer",
-      "esri/core/reactiveUtils",
-      "esri/geometry/Point"
-    ], function(Map, MapView, WebTileLayer, reactiveUtils, Point) {
-      const mapDiv = document.getElementById("mapDiv");
-      const zoomIn = document.getElementById("zoomIn");
-      const zoomOut = document.getElementById("zoomOut");
-      const coordinatesDisplay = document.getElementById("coordinatesDisplay");
-      const dateSelect = document.getElementById("dateSelect");
-      const prevDate = document.getElementById("prevDate");
-      const nextDate = document.getElementById("nextDate");
-      const loadingScreen = document.getElementById("loading-screen");
-      const coordsBtn = document.getElementById("coordsBtn");
-      const coordsContainer = document.querySelector(".coords-container");
-      const coordsForm = document.querySelector(".coords-form");
-      const scaleLine = document.getElementById("scaleLine");
-      let mapView, imageryLayer;
-      let availableDates = [];
-      let mapLoaded = false;
-      let dataLoaded = false;
-      function hideLoadingScreen() {
-        if (mapLoaded && dataLoaded) {
-          loadingScreen.classList.add("fade-out");
-          setTimeout(() => {
-            loadingScreen.style.display = "none";
-          }, 800);
-        }
-      }
-      function initializeMap(lon = 30.51, lat = 50.49) {
-        imageryLayer = new WebTileLayer({
-          urlTemplate: "https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile/{level}/{row}/{col}"
-        });
-        imageryLayer.on("layerview-create", (event) => {
-          const layerView = event.layerView;
-          layerView.watch("updating", (isUpdating) => {
-            if (isUpdating) {
-              const tiles = document.querySelectorAll(".esri-layer-tile");
-              tiles.forEach(tile => tile.classList.add("loading"));
-            } else {
-              const tiles = document.querySelectorAll(".esri-layer-tile");
-              tiles.forEach(tile => {
-                tile.classList.remove("loading");
-                tile.classList.add("loaded");
-              });
-            }
-          });
-        });
-        const map = new Map({
-          basemap: {
-            baseLayers: [imageryLayer]
-          }
-        });
-        mapView = new MapView({
-          container: mapDiv,
-          map: map,
-          center: [lon, lat],
-          zoom: 12,
-          constraints: {
-            minZoom: 2,
-            maxZoom: 19,
-            rotationEnabled: false
-          },
-          navigation: {
-            momentumEnabled: false,
-            browserTouchPanEnabled: true,
-            mouseWheelZoomEnabled: true,
-            browserPinchZoomEnabled: true
-          },
-          ui: {
-            components: []
-          }
-        });
-        mapDiv.addEventListener("touchstart", (e) => {
-          if (e.target === mapDiv || e.target.classList.contains("esri-view-surface")) {
-            e.preventDefault();
-          }
-        }, { passive: false });
-        mapDiv.addEventListener("touchmove", (e) => {
-          if (e.target === mapDiv || e.target.classList.contains("esri-view-surface")) {
-            e.preventDefault();
-          }
-        }, { passive: false });
-        reactiveUtils.watch(
-          () => mapView.center,
-          () => {
-            const { latitude, longitude } = mapView.center;
-            const coordsText = `${latitude.toFixed(6)},${longitude.toFixed(6)}`;
-            coordinatesDisplay.textContent = coordsText;
-            coordinatesDisplay.dataset.coords = coordsText;
-          }
-        );
-        reactiveUtils.watch(
-          () => mapView.scale,
-          () => {
-            const scale = Math.round(mapView.scale);
-            scaleLine.textContent = `Масштаб: 1:${scale.toLocaleString()}`;
-          }
-        );
-        coordinatesDisplay.addEventListener("click", async () => {
-          const coords = coordinatesDisplay.dataset.coords;
-          try {
-            await navigator.clipboard.writeText(coords);
-            coordinatesDisplay.textContent = "Координаты скопированы!";
-            setTimeout(() => {
-              coordinatesDisplay.textContent = coords;
-            }, 2000);
-          } catch (err) {
-            coordinatesDisplay.textContent = "Ошибка копирования";
-            setTimeout(() => {
-              coordinatesDisplay.textContent = coords;
-            }, 2000);
-          }
-        });
-        mapView.when(() => {
-          mapLoaded = true;
-          hideLoadingScreen();
-        }, (error) => {
-          alert("Не удалось загрузить карту. Проверьте подключение к интернету.");
-          mapLoaded = true;
-          hideLoadingScreen();
-        });
-      }
-      async function fetchWaybackData(lon = 31.17, lat = 55.7558) {
-        try {
-          const response = await Promise.race([
-            fetch("https://s3-us-west-2.amazonaws.com/config.maptiles.arcgis.com/waybackconfig.json"),
-            new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 10000))
-          ]);
-          if (!response.ok) throw new Error(`Ошибка HTTP: ${response.status}`);
-          const config = await response.json();
-          const tileInfo = lonLatToTile(lon, lat, 15);
-          availableDates = [];
-          const promises = Object.keys(config).slice(0, 50).map(async (releaseId) => {
-            const tilemapUrl = `https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tilemap/${releaseId}/15/${tileInfo.row}/${tileInfo.col}`;
-            try {
-              const tilemapResponse = await fetch(tilemapUrl);
-              if (!tilemapResponse.ok) return;
-              const tilemap = await tilemapResponse.json();
-              if (tilemap.valid && tilemap.data[0] === 1) {
-                const dateMatch = config[releaseId].itemTitle.match(/\d{4}-\d{2}-\d{2}/);
-                if (dateMatch) {
-                  availableDates.push({
-                    date: dateMatch[0],
-                    releaseId,
-                    url: config[releaseId].itemURL
-                  });
-                }
-              }
-            } catch (err) {}
-          });
-          await Promise.all(promises);
-          availableDates.sort((a, b) => new Date(a.date) - new Date(b.date));
-          dateSelect.innerHTML = availableDates.map((item, index) => `<option value="${index}">${item.date}</option>`).join("");
-          updateNavButtons();
-          if (availableDates.length > 0) {
-            changeImagery(0);
-          } else {
-            alert("Изображения для этой области недоступны. Попробуйте другую локацию.");
-          }
-        } catch (error) {
-          alert("Не удалось загрузить данные. Попробуйте позже.");
-        } finally {
-          dataLoaded = true;
-          hideLoadingScreen();
-        }
-      }
-      function changeImagery(index) {
-        const mapDivElement = document.querySelector(".esri-view");
-        mapDivElement.classList.add("switching");
-        const selected = availableDates[index];
-        imageryLayer.urlTemplate = selected.url;
-        imageryLayer.refresh();
-        dateSelect.value = index;
-        updateNavButtons();
-        setTimeout(() => {
-          mapDivElement.classList.remove("switching");
-        }, 400);
-      }
-      function updateNavButtons() {
-        const currentIndex = parseInt(dateSelect.value) || 0;
-        prevDate.disabled = currentIndex <= 0;
-        nextDate.disabled = currentIndex >= availableDates.length - 1;
-      }
-      function lonLatToTile(lon, lat, zoom) {
-        const x = ((lon + 180) / 360) * Math.pow(2, zoom);
-        const y = ((1 - Math.log(Math.tan((lat * Math.PI) / 180) + 1 / Math.cos((lat * Math.PI) / 180)) / Math.PI) / 2) * Math.pow(2, zoom);
-        return {
-          col: Math.floor(x),
-          row: Math.floor(y)
+    <div class="scale-line" id="scaleLine">Масштаб: 1:10000</div>
+    <div id="map"></div>
+
+    <script>
+        let map;
+        let currentCity = 'kyiv';
+        let currentMediaFolder = 'local_media';
+        let eventHandlers = [];
+        let cityData = {
+            kyiv: { pushpins: [], infoboxes: new Map(), polygons: [], polylines: [] },
+            brovary: { pushpins: [], infoboxes: new Map(), polygons: [], polylines: [] }
         };
-      }
-      zoomIn.addEventListener("click", () => mapView.goTo({ zoom: mapView.zoom + 1 }, { duration: 300 }));
-      zoomOut.addEventListener("click", () => mapView.goTo({ zoom: mapView.zoom - 1 }, { duration: 300 }));
-      dateSelect.addEventListener("change", (e) => changeImagery(e.target.value));
-      prevDate.addEventListener("click", () => changeImagery(parseInt(dateSelect.value) - 1));
-      nextDate.addEventListener("click", () => changeImagery(parseInt(dateSelect.value) + 1));
-      coordsBtn.addEventListener("click", () => {
-        if (coordsContainer.classList.contains("show")) {
-          coordsContainer.classList.remove("show");
-          coordsContainer.classList.add("hide");
-          setTimeout(() => {
-            coordsContainer.style.display = "none";
-            coordsContainer.classList.remove("hide");
-          }, 400);
-        } else {
-          coordsContainer.style.display = "flex";
-          setTimeout(() => {
-            coordsContainer.classList.add("show");
-          }, 10);
-          document.getElementById("coordsInput").focus();
-        }
-      });
-      document.addEventListener("click", (e) => {
-        if (!coordsBtn.contains(e.target) && !coordsContainer.contains(e.target)) {
-          if (coordsContainer.classList.contains("show")) {
-            coordsContainer.classList.remove("show");
-            coordsContainer.classList.add("hide");
-            setTimeout(() => {
-              coordsContainer.style.display = "none";
-              coordsContainer.classList.remove("hide");
-            }, 400);
-          }
-        }
-      });
-      coordsForm.addEventListener("submit", (e) => {
-        e.preventDefault();
-        const coordsInput = document.getElementById("coordsInput").value.trim();
-        const coords = coordsInput.split(",").map(coord => parseFloat(coord.trim()));
-        if (coords.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
-          const lat = coords[0];
-          const lon = coords[1];
-          if (lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
-            const mapDivElement = document.querySelector(".esri-view");
-            mapDivElement.classList.add("switching");
-            mapView.goTo({
-              center: [lon, lat],
-              zoom: 15
-            }, {
-              duration: 400,
-              easing: "ease-in-out"
-            }).then(() => {
-              mapDivElement.classList.remove("switching");
+        let currentInfobox = null;
+        let isAnimating = false;
+        let isLoading = false;
+
+        const citySettings = {
+            kyiv: {
+                center: [50.450100, 30.523400],
+                kml: 'doc.kml',
+                mediaFolder: 'local_media',
+                name: 'Киев'
+            },
+            brovary: {
+                center: [50.51790, 30.79956],
+                kml: 'brovary.kml',
+                mediaFolder: 'local_media2',
+                name: 'Бровары'
+            }
+        };
+
+        const customPinIcon = `
+            <svg width="24" height="32" viewBox="0 0 24 32" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <linearGradient id="glassGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#B22222;stop-opacity:0.7"/>
+                        <stop offset="50%" style="stop-color:#8B0000;stop-opacity:0.7"/>
+                        <stop offset="100%" style="stop-color:#B22222;stop-opacity:0.7"/>
+                    </linearGradient>
+                </defs>
+                <path d="M12 2C6.48 2 2 6.48 2 12c0 5.2 10 18 10 18s10-12.8 10-18c0-5.52-4.48-10-10-10z" fill="url(#glassGradient)" stroke="#000000" stroke-width="1"/>
+                <circle cx="12" cy="12" r="4" fill="#FFFFFF"/>
+            </svg>`;
+
+        function initMap() {
+            map = new Microsoft.Maps.Map(document.getElementById('map'), {
+                credentials: 'AvhUDUTzEOoxzCkPfDB0GEm3oZyDPpe0qn_Asbubfhe2tXLnTJ2OBWM0nc8uIO-K',
+                center: new Microsoft.Maps.Location(...citySettings.kyiv.center),
+                zoom: 12,
+                mapTypeId: Microsoft.Maps.MapTypeId.aerial,
+                enableClickableLogo: false,
+                showDashboard: false
             });
-            coordsContainer.classList.remove("show");
-            coordsContainer.classList.add("hide");
+
+            eventHandlers.push(
+                Microsoft.Maps.Events.addHandler(map, 'viewchange', updateScaleLine),
+                Microsoft.Maps.Events.addHandler(map, 'mousemove', (e) => {
+                    const point = new Microsoft.Maps.Point(e.getX(), e.getY());
+                    const loc = map.tryPixelToLocation(point);
+                    if (loc) {
+                        document.getElementById('coordinatesDisplay').textContent = `Ш: ${loc.latitude.toFixed(6)}, Д: ${loc.longitude.toFixed(6)}`;
+                    }
+                }),
+                Microsoft.Maps.Events.addHandler(map, 'click', (e) => {
+                    if (e.targetType !== 'pushpin' && e.targetType !== 'infobox' && e.targetType !== 'polygon' && e.targetType !== 'polyline' && currentInfobox) {
+                        closeCurrentInfobox();
+                    }
+                })
+            );
+
+            document.getElementById('cityButton').addEventListener('click', toggleCityMenu);
+            document.getElementById('overlay').addEventListener('click', (e) => {
+                e.stopPropagation();
+                closeEnlargedImage();
+            });
+            document.querySelectorAll('.city-menu-item').forEach(item => {
+                item.addEventListener('click', (e) => {
+                    const city = e.target.getAttribute('data-city');
+                    switchCity(city);
+                });
+            });
+
+            loadKMLData(citySettings.kyiv.kml, 'kyiv');
+
             setTimeout(() => {
-              coordsContainer.style.display = "none";
-              coordsContainer.classList.remove("hide");
-            }, 400);
-            document.getElementById("coordsInput").value = "";
-          } else {
-            alert("Пожалуйста, введите корректные координаты (широта: -90 до 90, долгота: -180 до 180).");
-          }
-        } else {
-          alert("Пожалуйста, введите координаты в формате: широта,долгота (например, 50.5564,30.4495).");
+                document.getElementById('loadingScreen').classList.add('fade-out');
+            }, 600);
         }
-      });
-      setTimeout(() => {
-        if (!mapLoaded || !dataLoaded) {
-          mapLoaded = true;
-          dataLoaded = true;
-          hideLoadingScreen();
+
+        function toggleCityMenu() {
+            if (isLoading) return;
+            const menu = document.getElementById('cityMenu');
+            const mapElement = document.getElementById('map');
+            const overlay = document.getElementById('overlay');
+            if (menu.classList.contains('visible')) {
+                closeCityMenu();
+            } else {
+                menu.classList.add('visible');
+                mapElement.classList.add('map-blurred');
+                overlay.classList.add('active');
+            }
         }
-      }, 15000);
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords;
-          initializeMap(longitude, latitude);
-          fetchWaybackData(longitude, latitude);
-        },
-        (error) => {
-          initializeMap();
-          fetchWaybackData();
+
+        function closeCityMenu() {
+            const menu = document.getElementById('cityMenu');
+            const mapElement = document.getElementById('map');
+            const overlay = document.getElementById('overlay');
+            menu.classList.remove('visible');
+            mapElement.classList.remove('map-blurred');
+            overlay.classList.remove('active');
         }
-      );
-    });
-  </script>
+
+        function showEnlargedImage(src) {
+            if (isAnimating) return;
+            isAnimating = true;
+            const container = document.getElementById('enlargedImageContainer');
+            const img = document.getElementById('enlargedImage');
+            const mapElement = document.getElementById('map');
+            const overlay = document.getElementById('overlay');
+
+            img.src = src;
+            img.onload = () => {
+                container.classList.add('active');
+                mapElement.classList.add('map-blurred');
+                overlay.classList.add('active');
+                setTimeout(() => {
+                    isAnimating = false;
+                }, 300);
+            };
+            img.onerror = () => {
+                console.warn(`Ошибка загрузки изображения: ${src}`);
+                isAnimating = false;
+            };
+        }
+
+        function closeEnlargedImage() {
+            if (isAnimating) return;
+            isAnimating = true;
+            const container = document.getElementById('enlargedImageContainer');
+            const mapElement = document.getElementById('map');
+            const overlay = document.getElementById('overlay');
+
+            container.classList.remove('active');
+            mapElement.classList.remove('map-blurred');
+            overlay.classList.remove('active');
+
+            setTimeout(() => {
+                isAnimating = false;
+                document.getElementById('enlargedImage').src = '';
+            }, 300);
+        }
+
+        async function switchCity(city) {
+            if (city === currentCity || isLoading) return;
+            isLoading = true;
+
+            console.log(`Переключение на город: ${city}`);
+
+            document.getElementById('cityButton').textContent = citySettings[city].name;
+            document.querySelectorAll('.city-menu-item').forEach(item => {
+                item.classList.toggle('active', item.getAttribute('data-city') === city);
+            });
+
+            closeCurrentInfobox();
+            closeCityMenu();
+            closeEnlargedImage();
+            await clearMap();
+
+            currentCity = city;
+            currentMediaFolder = citySettings[city].mediaFolder;
+
+            document.getElementById('loadingScreen').classList.remove('fade-out');
+            document.getElementById('loadingScreen').style.display = 'flex';
+
+            if (cityData[city].pushpins.length > 0) {
+                restoreCityData(city);
+            } else {
+                await loadKMLData(citySettings[city].kml, city);
+            }
+
+            map.setView({
+                center: new Microsoft.Maps.Location(...citySettings[city].center),
+                zoom: 12,
+                animate: true
+            });
+
+            isLoading = false;
+            console.log(`Город ${city} успешно загружен`);
+        }
+
+        function updateScaleLine() {
+            const zoom = map.getZoom();
+            const metersPerPixel = 156543.03392 * Math.cos(map.getCenter().latitude * Math.PI / 180) / Math.pow(2, zoom);
+            const scale = metersPerPixel * 100;
+            document.getElementById('scaleLine').textContent = `Масштаб: 1:${Math.round(scale)}`;
+        }
+
+        function closeCurrentInfobox() {
+            if (!currentInfobox) return;
+            isAnimating = true;
+            const currentElement = document.querySelector(`#infobox_${currentInfobox.metadata.id}`);
+            if (currentElement) {
+                currentElement.classList.remove('visible');
+                setTimeout(() => {
+                    currentInfobox.setOptions({ visible: false });
+                    currentInfobox = null;
+                    isAnimating = false;
+                    console.log('Инфоокно закрыто');
+                }, 300);
+            } else {
+                currentInfobox.setOptions({ visible: false });
+                currentInfobox = null;
+                isAnimating = false;
+                console.log('Инфоокно закрыто (без элемента)');
+            }
+        }
+
+        async function clearMap() {
+            console.log('Очистка карты');
+            if (currentInfobox) {
+                await closeCurrentInfobox();
+            }
+            map.entities.clear();
+            console.log('Карта очищена');
+        }
+
+        function restoreCityData(city) {
+            console.log(`Восстановление данных для ${city}`);
+            const data = cityData[city];
+            data.pushpins.forEach(pushpin => map.entities.push(pushpin));
+            data.infoboxes.forEach(infobox => map.entities.push(infobox));
+            data.polygons.forEach(polygon => map.entities.push(polygon));
+            data.polylines.forEach(polyline => map.entities.push(polyline));
+            setTimeout(() => {
+                document.getElementById('loadingScreen').classList.add('fade-out');
+            }, 600);
+        }
+
+        async function loadKMLData(kmlFile, city) {
+            try {
+                console.log(`Загрузка KML: ${kmlFile}`);
+                const response = await fetch(kmlFile);
+                if (!response.ok) {
+                    throw new Error(`Ошибка загрузки KML: ${response.status}`);
+                }
+                const kmlText = await response.text();
+                const parser = new DOMParser();
+                const kmlDoc = parser.parseFromString(kmlText, 'text/xml');
+                if (kmlDoc.documentElement.nodeName === 'parsererror') {
+                    throw new Error('Ошибка парсинга KML-файла');
+                }
+                await processKML(kmlDoc, city);
+                showProgress('', 0);
+            } catch (error) {
+                console.error('Ошибка:', error);
+                showProgress(`Ошибка: ${error.message}`, 3000);
+            } finally {
+                setTimeout(() => {
+                    document.getElementById('loadingScreen').classList.add('fade-out');
+                }, 600);
+            }
+        }
+
+        async function retryImageLoad(imgElement, originalPath, name, maxRetries = 3, retryDelay = 500) {
+            let retries = parseInt(imgElement.dataset.retries || 0);
+            if (retries >= maxRetries) {
+                imgElement.classList.add('error');
+                imgElement.src = '';
+                imgElement.alt = 'Изображение не загружено';
+                console.warn(`Все попытки загрузки изображения для ${name} не удались: ${originalPath}`);
+                return;
+            }
+
+            imgElement.dataset.retries = retries + 1;
+            const newPath = `${currentMediaFolder}/${originalPath.split('/').pop()}`.toLowerCase();
+            console.log(`Попытка ${retries + 1} загрузки изображения для ${name}: ${newPath}`);
+
+            return new Promise((resolve) => {
+                imgElement.src = newPath;
+                imgElement.onload = () => {
+                    console.log(`Изображение успешно загружено: ${newPath}`);
+                    resolve(true);
+                };
+                imgElement.onerror = () => {
+                    setTimeout(() => {
+                        retryImageLoad(imgElement, originalPath, name, maxRetries, retryDelay).then(resolve);
+                    }, retryDelay);
+                };
+            });
+        }
+
+        function copyCoordinates(latitude, longitude) {
+            const button = event.currentTarget;
+            navigator.clipboard.writeText(`Ш: ${latitude}, Д: ${longitude}`)
+                .then(() => {
+                    button.classList.add('copied');
+                    setTimeout(() => {
+                        button.classList.remove('copied');
+                    }, 1000);
+                })
+                .catch(err => {
+                    console.error('Ошибка копирования координат:', err);
+                    alert('Ошибка при копировании координат');
+                });
+        }
+
+        async function processKML(kmlDoc, city) {
+            const placemarks = kmlDoc.getElementsByTagName('Placemark');
+            console.log(`Найдено меток: ${placemarks.length}`);
+            const data = cityData[city];
+
+            for (const placemark of Array.from(placemarks)) {
+                const id = placemark.getAttribute('id') || `placemark_${Math.random().toString(36).substr(2, 9)}`;
+                const nameElement = placemark.getElementsByTagName('name')[0];
+                const descriptionElement = placemark.getElementsByTagName('description')[0];
+                const pointElement = placemark.getElementsByTagName('Point')[0];
+                const polygonElement = placemark.getElementsByTagName('Polygon')[0];
+                const lineStringElement = placemark.getElementsByTagName('LineString')[0];
+
+                const name = nameElement ? nameElement.textContent.trim() : 'Без названия';
+                let description = descriptionElement ? descriptionElement.textContent.trim() : '';
+
+                let latitude, longitude, location;
+                if (pointElement) {
+                    const coordsElement = pointElement.getElementsByTagName('coordinates')[0];
+                    if (coordsElement) {
+                        const coords = coordsElement.textContent.trim().split(',');
+                        if (coords.length >= 2) {
+                            longitude = parseFloat(coords[0]);
+                            latitude = parseFloat(coords[1]);
+                            if (isNaN(latitude) || isNaN(longitude)) {
+                                console.warn(`Некорректные координаты для метки ${name}: ${coords}`);
+                                continue;
+                            }
+                            location = new Microsoft.Maps.Location(latitude, longitude);
+                        } else {
+                            console.warn(`Недостаточно координат для метки ${name}: ${coords}`);
+                            continue;
+                        }
+                    }
+                }
+
+                if (polygonElement) {
+                    const outerBoundary = polygonElement.getElementsByTagName('outerBoundaryIs')[0];
+                    if (outerBoundary) {
+                        const coordsElement = outerBoundary.getElementsByTagName('coordinates')[0];
+                        if (coordsElement) {
+                            const coordsText = coordsElement.textContent.trim();
+                            const coordsArray = coordsText.split(/\s+/).map(coord => {
+                                const [lon, lat] = coord.split(',').map(parseFloat);
+                                return new Microsoft.Maps.Location(lat, lon);
+                            });
+                            if (coordsArray.length > 2) {
+                                const polygon = new Microsoft.Maps.Polygon(coordsArray, {
+                                    fillColor: 'rgba(0, 122, 255, 0.2)',
+                                    strokeColor: 'rgba(0, 122, 255, 0.8)',
+                                    strokeThickness: 2
+                                });
+                                polygon.metadata = { id, name };
+                                map.entities.push(polygon);
+                                data.polygons.push(polygon);
+                                console.log(`Добавлен полигон для ${name}`);
+                            }
+                        }
+                    }
+                }
+
+                if (lineStringElement) {
+                    const coordsElement = lineStringElement.getElementsByTagName('coordinates')[0];
+                    if (coordsElement) {
+                        const coordsText = coordsElement.textContent.trim();
+                        const coordsArray = coordsText.split(/\s+/).map(coord => {
+                            const [lon, lat] = coord.split(',').map(parseFloat);
+                            return new Microsoft.Maps.Location(lat, lon);
+                        });
+                        if (coordsArray.length > 1) {
+                            const polyline = new Microsoft.Maps.Polyline(coordsArray, {
+                                strokeColor: 'rgba(0, 122, 255, 0.8)',
+                                strokeThickness: 3
+                            });
+                            polyline.metadata = { id, name };
+                            map.entities.push(polyline);
+                            data.polylines.push(polyline);
+                            console.log(`Добавлена линия для ${name}`);
+                        }
+                    }
+                }
+
+                let images = [];
+                const imageData = Array.from(placemark.getElementsByTagName('Data')).find(
+                    data => data.getAttribute('name') === 'com_exlyo_mapmarker_images_with_ext'
+                );
+                if (imageData) {
+                    try {
+                        const imageList = JSON.parse(imageData.getElementsByTagName('value')[0].textContent);
+                        console.log(`Исходный список изображений для метки ${name}:`, imageList.map(img => img.file_rel_path));
+
+                        const normalizedPaths = imageList
+                            .map(img => {
+                                const path = img.file_rel_path ? img.file_rel_path.trim() : null;
+                                if (!path) return null;
+                                const parts = path.split('/');
+                                if (parts.length > 1) {
+                                    parts[0] = currentMediaFolder;
+                                    return parts.join('/').toLowerCase();
+                                }
+                                return `${currentMediaFolder}/${path}`.toLowerCase();
+                            })
+                            .filter(path => path !== null);
+
+                        const uniqueImagePaths = [...new Set(normalizedPaths)];
+                        images = uniqueImagePaths;
+                        console.log(`Уникальные пути для метки ${name}:`, images);
+                    } catch (e) {
+                        console.warn(`Ошибка парсинга изображений для метки ${name}:`, e);
+                    }
+                }
+
+                const descriptionClean = description
+                    .replace(/<!\[CDATA\[(.*?)\]\]>/gs, '$1')
+                    .replace(/<pre[^>]*>(.*?)<\/pre>/gs, '$1')
+                    .replace(/<img[^>]*>/gi, '')
+                    .replace(/<br\s*\/?>/gi, '');
+
+                const linkRegex = /https?:\/\/[^\s<]+/g;
+                const links = descriptionClean.match(linkRegex) || [];
+
+                // Проверка координат и формирование ссылки на Google Maps
+                let googleMapsLink = '';
+                if (!isNaN(latitude) && !isNaN(longitude)) {
+                    console.log(`Формирование ссылки Google Maps для ${name}: latitude=${latitude.toFixed(6)}, longitude=${longitude.toFixed(6)}`);
+                    googleMapsLink = `<a href="https://www.google.com/maps?q=${latitude.toFixed(6)},${longitude.toFixed(6)}&z=15" 
+                                      class="google-maps-link" 
+                                      target="_blank">Открыть в Google Maps</a><br>`;
+                } else {
+                    googleMapsLink = `<p style="color: red;">Координаты недоступны</p>`;
+                }
+
+                let infoboxHtml = `
+                    <div class="custom-infobox" id="infobox_${id}">
+                        <h3>${name}</h3>
+                        <p>${descriptionClean}</p>
+                        ${googleMapsLink}
+                `;
+                links.forEach(link => {
+                    const linkDisplay = link.length > 50 ? link.substring(0, 47) + '...' : link;
+                    infoboxHtml += `<a href="${link}" target="_blank">${linkDisplay}</a><br>`;
+                });
+                images.forEach(img => {
+                    console.log(`Добавлено изображение в инфоокно ${name}: ${img}`);
+                    infoboxHtml += `<img src="${img}" alt="Изображение ${name}" data-retries="0" onerror="retryImageLoad(this, '${img}', '${name}');" onclick="showEnlargedImage('${img}')">`;
+                });
+                infoboxHtml += `
+                        <button class="copy-button" onclick="copyCoordinates(${latitude}, ${longitude})">Скопировать координаты</button>
+                    </div>`;
+
+                if (location) {
+                    const pushpin = new Microsoft.Maps.Pushpin(location, {
+                        title: name.length > 20 ? name.substring(0, 17) + '...' : name,
+                        icon: `data:image/svg+xml;base64,${btoa(customPinIcon)}`,
+                        anchor: new Microsoft.Maps.Point(12, 32)
+                    });
+                    pushpin.metadata = { id };
+
+                    const infobox = new Microsoft.Maps.Infobox(location, {
+                        visible: false,
+                        maxWidth: 300,
+                        maxHeight: 400,
+                        offset: new Microsoft.Maps.Point(0, 30),
+                        htmlContent: infoboxHtml
+                    });
+                    infobox.metadata = { id };
+
+                    const handler = Microsoft.Maps.Events.addHandler(pushpin, 'click', () => {
+                        if (isAnimating || isLoading) return;
+                        if (currentInfobox === infobox) {
+                            closeCurrentInfobox();
+                            return;
+                        }
+                        isAnimating = true;
+                        if (currentInfobox) {
+                            const currentElement = document.querySelector(`#infobox_${currentInfobox.metadata.id}`);
+                            if (currentElement) {
+                                currentElement.classList.remove('visible');
+                                setTimeout(() => {
+                                    currentInfobox.setOptions({ visible: false });
+                                    openNewInfobox(infobox, id);
+                                }, 300);
+                            } else {
+                                openNewInfobox(infobox, id);
+                            }
+                        } else {
+                            openNewInfobox(infobox, id);
+                        }
+                    });
+
+                    pushpin.metadata.handler = handler;
+                    map.entities.push(pushpin);
+                    map.entities.push(infobox);
+                    data.pushpins.push(pushpin);
+                    data.infoboxes.set(id, infobox);
+                    console.log(`Добавлена метка: ${name} (Ш: ${latitude}, Д: ${longitude})`);
+                }
+            }
+        }
+
+        function openNewInfobox(infobox, id) {
+            infobox.setOptions({ visible: true });
+            setTimeout(() => {
+                const infoboxElement = document.querySelector(`#infobox_${id}`);
+                if (infoboxElement) {
+                    infoboxElement.classList.add('visible');
+                    console.log(`Открыто инфоокно для ${id}`);
+                }
+                currentInfobox = infobox;
+                isAnimating = false;
+            }, 50);
+        }
+
+        function showProgress(message, timeout = 0) {
+            const progress = document.getElementById('progress');
+            progress.textContent = message;
+            progress.parentElement.style.display = message ? 'flex' : 'none';
+            if (timeout > 0) {
+                setTimeout(() => {
+                    progress.parentElement.style.display = 'none';
+                }, timeout);
+            }
+        }
+    </script>
 </body>
-  </html>
+</html>
